@@ -236,6 +236,10 @@ contract IERC721 is IERC165 {
     function getFeePercentage() public view returns (uint256);
     
     function getDeployer() public view returns (address);
+    
+    function getFeeReceivers() public returns(address[] memory);
+    
+    function getFeeDistribution(address fee_receiver) public returns(uint256);
 }
 
 /*
@@ -422,6 +426,10 @@ contract OwnableOperatorRole is Ownable, OperatorRole {
     Note: The ERC-165 identifier for this interface is 0xd9b67a26.
  */
 contract IERC1155 is IERC165 {
+    struct Fee {
+        address _address;
+        uint256 _percentage;
+    }
     /**
         @dev Either `TransferSingle` or `TransferBatch` MUST emit when tokens are transferred, including zero value transfers as well as minting or burning (see "Safe Transfer Rules" section of the standard).
         The `_operator` argument MUST be msg.sender.
@@ -523,6 +531,16 @@ contract IERC1155 is IERC165 {
         @return           True if the operator is approved, false if not
     */
     function isApprovedForAll(address _owner, address _operator) external view returns (bool);
+    
+    function approve(uint256 id, uint256 count, address _operator) external;
+    
+    function freeze(uint256 id, uint256 count, address _operator) external;
+    
+    function isApproved(address owner, uint256 id, uint256 count, address _operator) external returns (bool);
+    
+    function getCopyrightFeeDistribution(uint256 id) public returns (Fee[] memory);
+    
+    function _getCopyRightFee(uint256 id) external returns (uint256);
 }
 
 contract TransferProxy is OwnableOperatorRole {
@@ -865,27 +883,7 @@ contract ERC165 is IERC165 {
     }
 }
 
-contract HasSecondarySaleFees is ERC165 {
-
-    event SecondarySaleFees(uint256 tokenId, address[] recipients, uint[] bps);
-
-    /*
-     * bytes4(keccak256('getFeeBps(uint256)')) == 0x0ebd4c7f
-     * bytes4(keccak256('getFeeRecipients(uint256)')) == 0xb9c4d9fb
-     *
-     * => 0x0ebd4c7f ^ 0xb9c4d9fb == 0xb7799584
-     */
-    bytes4 private constant _INTERFACE_ID_FEES = 0xb7799584;
-
-    constructor() public {
-        _registerInterface(_INTERFACE_ID_FEES);
-    }
-
-    function getFeeRecipients(uint256 id) external view returns (address payable[] memory);
-    function getFeeBps(uint256 id) external view returns (uint[] memory);
-}
-
-contract ExchangeV1 {
+contract ExchangeV1 is Ownable {
     using SafeMath for uint;
     using UintLibrary for uint;
     using StringLibrary for string;
@@ -912,101 +910,381 @@ contract ExchangeV1 {
 
     TransferProxy public transferProxy;
     ERC20TransferProxy public erc20TransferProxy;
+    
+    mapping (address => mapping(uint256 => uint256)) public buyOrder;
+    mapping (address => mapping(uint256 => address)) public auctionOrder;
+    mapping (address => mapping(uint256 => mapping(address => mapping(address => uint256)))) public bidOrder;
+    mapping (address => mapping(uint256 => address[])) public bidMembers;
+    
+    mapping (uint256 => mapping(uint256 => uint256)) public buyERC1155Order;        // [token_id][count][amount]
+    mapping (uint256 => mapping(uint256 => address)) public auctionERC1155Order;    // [token_id][count][asset_id];
+    mapping (uint256 => mapping(uint256 => mapping(address => mapping(address => uint256)))) public bidERC1155Order;    // [token_id][count][bidder][asset_id][amount];
+    mapping (uint256 => mapping(uint256 => address[])) public bidERC1155Members;    // [token_id][count][bidders[]]
+    
+    uint256 public listingFee = 15 * 10** 15;
+    uint256 public serviceFee = 25; // 25 / 1000 => 2.5%
+    
+    address payable public serviceAddress;
+    address public erc1155Address;
 
     constructor(
         TransferProxy _transferProxy, ERC20TransferProxy _erc20TransferProxy
     ) public {
         transferProxy = _transferProxy;
         erc20TransferProxy = _erc20TransferProxy;
+        
+        serviceAddress = _msgSender();
     }
 
     function exchange(
         address sellToken, uint256 sellTokenId,
         address owner,
         address buyToken, uint256 buyValue,
-        address buyer,
-        address[] calldata fee_distribution, uint256[] calldata percentage
+        address buyer
     ) payable external {
-        IERC721(sellToken).checkFeeDistributionPercentage(fee_distribution, percentage);
+        require(owner == _msgSender(), "Exchange: The only token owner can accept bid.");
         
+        validateBidRequest(sellToken, sellTokenId, buyer, buyToken, buyValue);
+        
+        uint256 serviceFeeAmount = buyValue.mul(serviceFee).div(1000);
+        uint256 amount = buyValue - serviceFeeAmount;
+        
+        address[] memory fee_receivers = IERC721(sellToken).getFeeReceivers();
         
         uint256 feePercentage = IERC721(sellToken).getFeePercentage();
         
         if (feePercentage == 0) {
             transferProxy.erc721safeTransferFrom(IERC721(sellToken), owner, buyer, sellTokenId);
-            erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, owner, buyValue);
+            erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, owner, amount);
         } else {
-            DistributionItem[] memory distributions = new DistributionItem[](fee_distribution.length > 0? fee_distribution.length + 1: 2);
-        
-            
-            if (fee_distribution.length > 0) {
-                uint256 total = 0;
-                
-                for (uint256 i = 0; i < fee_distribution.length; i++) {
-                    total += percentage[i];
-                }
-                
-                for (uint256 i = 0; i < fee_distribution.length; i++) {
-                    distributions[i] = DistributionItem(fee_distribution[i], percentage[i] * buyValue * feePercentage / total / 100);
-                }
-                
-                distributions[fee_distribution.length] = DistributionItem(owner, (100 - feePercentage) * buyValue / 100);
-            } else {
-                distributions[0] = DistributionItem(IERC721(sellToken).getDeployer(), feePercentage * buyValue / 100);
-                distributions[1] = DistributionItem(owner, buyValue - distributions[0]._amount);
-            }
+            DistributionItem[] memory distributions = getDistributions(sellToken, owner, fee_receivers, feePercentage, amount);
             
             transferProxy.erc721safeTransferFrom(IERC721(sellToken), owner, buyer, sellTokenId);
             for (uint256 i = 0; i < distributions.length; i++) {
-                erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, distributions[i]._address, distributions[i]._amount);
+                if (distributions[i]._amount > 0) {
+                    erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, distributions[i]._address, distributions[i]._amount);
+                }
             }
         }
         
+        if (serviceFeeAmount > 0) {
+            erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, serviceAddress, serviceFeeAmount);
+        }
+        
+        CancelAllBid(sellToken, sellTokenId, buyToken);
+        
+        auctionOrder[sellToken][sellTokenId] = address(0);
+        
         emit Buy(sellToken, sellTokenId, owner, buyToken, buyValue, buyer);
+    }
+    
+    function getDistributions(address sellToken, address owner, address[] memory fee_receivers, uint256 feePercentage, uint256 amount) internal returns (DistributionItem[] memory) {
+        DistributionItem[] memory distributions = new DistributionItem[](fee_receivers.length + 1);
+            
+            uint256 feeAmount = amount.mul(feePercentage).div(100);
+            
+            uint256 total = 0;
+            for (uint256 i = 0; i < fee_receivers.length; i++) {
+                total += IERC721(sellToken).getFeeDistribution(fee_receivers[i]);
+            }
+            
+            for (uint256 i = 0; i < fee_receivers.length; i++) {
+                uint256 distributionAmount = 0;
+                
+                {
+                
+                    distributionAmount = IERC721(sellToken).getFeeDistribution(fee_receivers[i]) * feeAmount;
+                }
+                
+                {
+                    distributionAmount = distributionAmount / total;
+                }
+                    
+                distributions[i] = DistributionItem(fee_receivers[i], distributionAmount);
+            }
+            
+            distributions[fee_receivers.length] = DistributionItem(owner, amount - feeAmount);
+            
+            return distributions;
     }
     
     function buy(
         address sellToken, uint256 sellTokenId,
         address owner,
         uint256 buyValue,
-        address buyer,
-        address[] calldata fee_distribution, uint256[] calldata percentage
+        address buyer
     ) payable external {
-        IERC721(sellToken).checkFeeDistributionPercentage(fee_distribution, percentage);
+        validateBuyRequest(sellToken, sellTokenId, buyValue);
         
+        uint256 serviceFeeAmount = buyValue.mul(serviceFee).div(1000);
+        uint256 amount = buyValue - serviceFeeAmount;
+        
+        address[] memory fee_receivers = IERC721(sellToken).getFeeReceivers();
         
         uint256 feePercentage = IERC721(sellToken).getFeePercentage();
         
         if (feePercentage == 0) {
             transferProxy.erc721safeTransferFrom(IERC721(sellToken), owner, buyer, sellTokenId);
             address payable to_address = address(uint160(owner));
-            to_address.send(buyValue);
+            to_address.send(amount);
         } else {
-            DistributionItem[] memory distributions = new DistributionItem[](fee_distribution.length > 0? fee_distribution.length + 1: 2);
-        
-            
-            if (fee_distribution.length > 0) {
-                uint256 total = 0;
-                
-                for (uint256 i = 0; i < fee_distribution.length; i++) {
-                    total += percentage[i];
-                }
-                
-                for (uint256 i = 0; i < fee_distribution.length; i++) {
-                    distributions[i] = DistributionItem(fee_distribution[i], percentage[i] * buyValue * feePercentage / total / 100);
-                }
-                
-                distributions[fee_distribution.length] = DistributionItem(owner, (100 - feePercentage) * buyValue / 100);
-            } else {
-                distributions[0] = DistributionItem(IERC721(sellToken).getDeployer(), feePercentage * buyValue / 100);
-                distributions[1] = DistributionItem(owner, buyValue - distributions[0]._amount);
-            }
+            DistributionItem[] memory distributions = getDistributions(sellToken, owner, fee_receivers, feePercentage, amount);
             
             transferProxy.erc721safeTransferFrom(IERC721(sellToken), owner, buyer, sellTokenId);
             for (uint256 i = 0; i < distributions.length; i++) {
-                address payable to_address = address(uint160(distributions[i]._address));
-                to_address.send(distributions[i]._amount);
+                if (distributions[i]._amount > 0) {
+                    address payable to_address = address(uint160(distributions[i]._address));
+                    to_address.transfer(distributions[i]._amount);
+                }
             }
         }
+        
+        if (serviceFeeAmount > 0) {
+            serviceAddress.transfer(serviceFeeAmount);
+        }
+        
+        buyOrder[sellToken][sellTokenId] = 0;
+    }
+    
+    function BuyRequest(address token, uint256 tokenId, uint256 amount) public payable {
+        require(IERC721(token).getApproved(tokenId) == address(transferProxy), "Not approved yet.");
+        require(IERC721(token).ownerOf(tokenId) == msg.sender, "Only owner can request.");
+        
+        require(msg.value == listingFee, "Incorrect listing fee.");
+        
+        buyOrder[token][tokenId] = amount;
+    }
+    
+    function AuctionRequest(address token, uint256 tokenId, address buytoken) public payable {
+        require(IERC721(token).getApproved(tokenId) == address(transferProxy), "Not approved yet.");
+        require(IERC721(token).ownerOf(tokenId) == msg.sender, "Only owner can request.");
+        
+        require(msg.value == listingFee, "Incorrect listing fee.");
+        
+        auctionOrder[token][tokenId] = buytoken;
+    }
+    
+    function CancelBuyRequest(address token, uint256 tokenId) public {
+        require(IERC721(token).getApproved(tokenId) == address(transferProxy), "Not approved yet.");
+        require(IERC721(token).ownerOf(tokenId) == msg.sender, "Only owner can request.");
+        buyOrder[token][tokenId] = 0;
+    }
+    
+    function validateBuyRequest(address token, uint256 tokenId, uint256 amount) internal {
+        require(buyOrder[token][tokenId] == amount, "Amount is incorrect.");
+    }
+    
+    function BidRequest(address sellToken, uint256 tokenId, address buyToken, uint256 amount) public {
+        require(IERC20(buyToken).allowance(msg.sender, address(erc20TransferProxy)) >= amount, "Not allowed yet.");
+        require(auctionOrder[sellToken][tokenId] == buyToken, "Not acceptable asset.");
+        
+        bidOrder[sellToken][tokenId][msg.sender][buyToken] = amount;
+        bidMembers[sellToken][tokenId].push(msg.sender);
+    }
+    
+    function validateBidRequest(address sellToken, uint256 tokenId, address buyer, address buyToken, uint256 amount) internal {
+        require(bidOrder[sellToken][tokenId][buyer][buyToken] == amount, "Amount is incorrect.");
+    }
+    
+    function CancelBid(address sellToken, uint256 tokenId, address buyToken) public {
+        bidOrder[sellToken][tokenId][msg.sender][buyToken] = 0;
+        for (uint256 i  = 0; i < bidMembers[sellToken][tokenId].length; i++) {
+            if (bidMembers[sellToken][tokenId][i] == msg.sender) {
+                bidMembers[sellToken][tokenId][i] = bidMembers[sellToken][tokenId][bidMembers[sellToken][tokenId].length - 1];
+                bidMembers[sellToken][tokenId].pop();
+                break;
+            }
+        }
+    }
+    
+    function CancelAllBid(address sellToken, uint256 tokenId, address buyToken) internal {
+        while (bidMembers[sellToken][tokenId].length != 0) {
+            address member = bidMembers[sellToken][tokenId][bidMembers[sellToken][tokenId].length - 1];
+            bidOrder[sellToken][tokenId][member][buyToken] = 0;
+            bidMembers[sellToken][tokenId].pop();
+        }
+    }
+    
+    function CancelAuctionRequests(address sellToken, uint256 tokenId, address buyToken) public {
+        require(IERC721(sellToken).getApproved(tokenId) == address(transferProxy), "Not approved nft token.");
+        require(IERC721(sellToken).ownerOf(tokenId) == msg.sender, "Only owner can request.");
+        
+        CancelAllBid(sellToken, tokenId, buyToken);
+        auctionOrder[sellToken][tokenId] = address(0);
+    }
+    
+    function BuyERC1155Request(uint256 id, uint256 count, uint256 amount) public payable {
+        require(IERC1155(erc1155Address).isApproved(_msgSender(), id, count, address(this)) == true, "Not approved yet.");
+        require(IERC1155(erc1155Address).balanceOf(_msgSender(), id) >= count, "Only owner can request.");
+        
+        require(msg.value == listingFee, "Incorrect listing fee.");
+        
+        buyERC1155Order[id][count] = amount;
+    }
+    
+    function AuctionERC1155Request(uint256 id, uint256 count, address buytoken) public payable {
+        require(IERC1155(erc1155Address).isApproved(_msgSender(), id, count, address(this)) == true, "Not approved yet.");
+        require(IERC1155(erc1155Address).balanceOf(_msgSender(), id) >= count, "Only owner can request.");
+        
+        require(msg.value == listingFee, "Incorrect listing fee.");
+        
+        auctionERC1155Order[id][count] = buytoken;
+    }
+    
+    function CancelBuyERC1155Request(uint256 id, uint256 count, uint256 amount) public {
+        require(IERC1155(erc1155Address).isApproved(_msgSender(), id, count, address(this)) == true, "Not approved yet.");
+        require(IERC1155(erc1155Address).balanceOf(_msgSender(), id) >= count, "Only owner can request.");
+        buyERC1155Order[id][count] = 0;
+    }
+    
+    function validateBuyERC1155Request(uint256 id, uint256 count, uint256 amount) internal {
+        require(buyERC1155Order[id][count] == amount, "Amount is incorrect.");
+    }
+    
+    function BidERC1155Request(uint256 id, uint256 count, address buyToken, uint256 amount) public {
+        require(IERC20(buyToken).allowance(msg.sender, address(erc20TransferProxy)) >= amount, "Not allowed yet.");
+        require(auctionERC1155Order[id][count] == buyToken, "Not acceptable asset.");
+        
+        bidERC1155Order[id][count][msg.sender][buyToken] = amount;
+        bidERC1155Members[id][count].push(msg.sender);
+    }
+    
+    function validateBidERC1155Request(uint256 id, uint256 count, address buyer, address buyToken, uint256 amount) internal {
+        require(bidERC1155Order[id][count][buyer][buyToken] == amount, "Amount is incorrect.");
+    }
+    
+    function CancelERC1155Bid(uint256 id, uint256 count, address buyToken) public {
+        bidERC1155Order[id][count][msg.sender][buyToken] = 0;
+        for (uint256 i  = 0; i < bidERC1155Members[id][count].length; i++) {
+            if (bidERC1155Members[id][count][i] == msg.sender) {
+                bidERC1155Members[id][count][i] = bidERC1155Members[id][count][bidERC1155Members[id][count].length - 1];
+                bidERC1155Members[id][count].pop();
+                break;
+            }
+        }
+    }
+    
+    function CancelAllERC1155Bid(uint256 id, uint256 count, address buyToken) internal {
+        while (bidERC1155Members[id][count].length != 0) {
+            address member = bidERC1155Members[id][count][bidERC1155Members[id][count].length - 1];
+            bidERC1155Order[id][count][member][buyToken] = 0;
+            bidERC1155Members[id][count].pop();
+        }
+    }
+    
+    function CancelAuctionERC1155Requests(uint256 id, uint256 count, address buyToken) public {
+        require(IERC1155(erc1155Address).isApproved(_msgSender(), id, count, address(this)) == true, "Not approved yet.");
+        require(IERC1155(erc1155Address).balanceOf(_msgSender(), id) >= count, "Only owner can request.");
+        
+        CancelAllERC1155Bid(id, count, buyToken);
+        auctionERC1155Order[id][count] = address(0);
+    }
+    
+    function setListingFee(uint256 fee) public onlyOwner {
+        listingFee = fee;
+    }
+    
+    function setERC1155ContractAddress(address contractAddress) public onlyOwner {
+        erc1155Address = contractAddress;
+    }
+    
+    function exchangeERC1155(
+        uint256 id, uint256 count,
+        address owner,
+        address buyToken, uint256 buyValue,
+        address buyer
+    ) payable external {
+        require(owner == _msgSender(), "Exchange: The only token owner can accept bid.");
+        
+        validateBidERC1155Request(id, count, buyer, buyToken, buyValue);
+        
+        uint256 serviceFeeAmount = buyValue.mul(serviceFee).div(1000);
+        uint256 amount = buyValue - serviceFeeAmount;
+        
+        IERC1155.Fee[] memory fees = IERC1155(erc1155Address).getCopyrightFeeDistribution(id);
+        
+        uint256 feePercentage = IERC1155(erc1155Address)._getCopyRightFee(id);
+        
+        if (feePercentage == 0) {
+            IERC1155(erc1155Address).safeTransferFrom(owner, buyer, id, count, new bytes(0x0));
+            erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, owner, amount);
+        } else {
+            DistributionItem[] memory distributions = getERC1155Distributions(id, owner, fees, feePercentage, amount);
+            
+            IERC1155(erc1155Address).safeTransferFrom(owner, buyer, id, count, new bytes(0x0));
+            for (uint256 i = 0; i < distributions.length; i++) {
+                if (distributions[i]._amount > 0) {
+                    erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, distributions[i]._address, distributions[i]._amount);
+                }
+            }
+        }
+        
+        if (serviceFeeAmount > 0) {
+            erc20TransferProxy.erc20safeTransferFrom(IERC20(buyToken), buyer, serviceAddress, serviceFeeAmount);
+        }
+        
+        CancelAllERC1155Bid(id, count, buyToken);
+        
+        auctionERC1155Order[id][count] = address(0);
+    }
+    
+    function getERC1155Distributions(uint256 id, address owner, IERC1155.Fee[] memory fees, uint256 feePercentage, uint256 amount) internal returns (DistributionItem[] memory) {
+        
+        DistributionItem[] memory distributions = new DistributionItem[](fees.length + 1);
+            
+        uint256 feeAmount = amount.mul(feePercentage).div(100);
+        
+        uint256 total = 0;
+        for (uint256 i = 0; i < fees.length; i++) {
+            total += fees[i]._percentage;
+        }
+        
+        for (uint256 i = 0; i < fees.length; i++) {
+            uint256 distributionAmount = feeAmount * fees[i]._percentage / total;
+
+            distributions[i] = DistributionItem(fees[i]._address, distributionAmount);
+        }
+        
+        distributions[fees.length] = DistributionItem(owner, amount - feeAmount);
+        
+        return distributions;
+    }
+    
+    function buyERC1155(
+        uint256 id, uint256 count,
+        address owner,
+        uint256 buyValue,
+        address buyer
+    ) payable external {
+        validateBuyERC1155Request(id, count, buyValue);
+        
+        uint256 serviceFeeAmount = buyValue.mul(serviceFee).div(1000);
+        uint256 amount = buyValue - serviceFeeAmount;
+        
+        IERC1155.Fee[] memory fees = IERC1155(erc1155Address).getCopyrightFeeDistribution(id);
+        
+        uint256 feePercentage = IERC1155(erc1155Address)._getCopyRightFee(id);
+        
+        if (feePercentage == 0) {
+            IERC1155(erc1155Address).safeTransferFrom(owner, buyer, id, count, new bytes(0));
+            address payable to_address = address(uint160(owner));
+            to_address.send(amount);
+        } else {
+            DistributionItem[] memory distributions = getERC1155Distributions(id, owner, fees, feePercentage, amount);
+            
+            IERC1155(erc1155Address).safeTransferFrom(owner, buyer, id, count, new bytes(0));
+            for (uint256 i = 0; i < distributions.length; i++) {
+                if (distributions[i]._amount > 0) {
+                    address payable to_address = address(uint160(distributions[i]._address));
+                    to_address.transfer(distributions[i]._amount);
+                }
+            }
+        }
+        
+        if (serviceFeeAmount > 0) {
+            serviceAddress.transfer(serviceFeeAmount);
+        }
+        
+        buyERC1155Order[id][count] = 0;
     }
 }

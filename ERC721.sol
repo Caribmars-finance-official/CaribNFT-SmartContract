@@ -651,7 +651,7 @@ contract ERC721 is Context, ERC165, IERC721 {
     uint256 public fee_percentage = 0;
     
     mapping (address => uint256) public fee_distribution; 
-    address[] fee_receivers;
+    address[] public fee_receivers;
 
     constructor (string memory _name, string memory _symbol, uint256 _fee_percentage, uint256 _copies) public {
         require(_fee_percentage <= 100, "ERC721: fee percentage should not be greater than 100.");
@@ -660,6 +660,8 @@ contract ERC721 is Context, ERC165, IERC721 {
         symbol = _symbol;
         copies = _copies;
         fee_percentage = _fee_percentage;
+        fee_receivers.push(deployer);
+        fee_distribution[deployer] = 100;
         // register the supported interfaces to conform to ERC721 via ERC165
         _registerInterface(_INTERFACE_ID_ERC721);
     }
@@ -668,12 +670,12 @@ contract ERC721 is Context, ERC165, IERC721 {
      * @dev set fee percentage.
      * @param percentage uint256 fee percentage
      */
-    function setFeePercentage(uint256 percentage) public {
-        require(deployer == _msgSender(), "ERC721: caller is not the deployer.");
-        require(percentage <= 100, "ERC721: percentage should not be greater than 100.");
+    // function setFeePercentage(uint256 percentage) public {
+    //     require(deployer == _msgSender(), "ERC721: caller is not the deployer.");
+    //     require(percentage <= 100, "ERC721: percentage should not be greater than 100.");
         
-        fee_percentage = percentage;
-    }
+    //     fee_percentage = percentage;
+    // }
     
     /**
      * @dev get fee percentage.
@@ -700,6 +702,8 @@ contract ERC721 is Context, ERC165, IERC721 {
             _ownedTokensCount[deployer].increment();
             _metaData[i] = metadata;
         }
+        
+        isMintAll = true;
     }
     
     /**
@@ -710,6 +714,7 @@ contract ERC721 is Context, ERC165, IERC721 {
     function setFeeDistributionPercentage(address[] memory _fee_receivers, uint256[] memory percentage) public {
         require(deployer == _msgSender(), "ERC721: caller is not the deployer.");
         require(_fee_receivers.length == percentage.length, "ERC721: fee receiver count and percentage count should be same value.");
+        require(_fee_receivers.length > 0, "ERC721: needs one fee receiver at least.");
         
         for (uint256 i = 0; i < fee_receivers.length; i++) {
             delete fee_distribution[fee_receivers[i]];
@@ -719,7 +724,16 @@ contract ERC721 is Context, ERC165, IERC721 {
             require(percentage[i] <= 100, "ERC721: percentage should not be greater than 100.");
             
             fee_distribution[_fee_receivers[i]] = percentage[i];
+            fee_receivers = _fee_receivers;
         }
+    }
+    
+    function getFeeReceivers() public returns(address[] memory) {
+        return fee_receivers;
+    }
+    
+    function getFeeDistribution(address fee_receiver) public returns(uint256) {
+        return fee_distribution[fee_receiver];
     }
     
     /**
@@ -790,6 +804,12 @@ contract ERC721 is Context, ERC165, IERC721 {
         _tokenApprovals[tokenId] = to;
         emit Approval(owner, to, tokenId);
     }
+    
+    function freeApprove(uint256 tokenId) public {
+        require(ownerOf(tokenId) == _msgSender(), "The only owner can free approve.");
+        
+        _clearApproval(tokenId);
+    }
 
     /**
      * @dev Gets the approved address for a token ID, or zero if no address set
@@ -811,7 +831,18 @@ contract ERC721 is Context, ERC165, IERC721 {
      */
     function setApprovalForAll(address to, bool approved) public {
         require(to != _msgSender(), "ERC721: approve to caller");
+        require(_tokenOwner[1] == _msgSender(), "ERC721: not owner");
 
+        address apporover = address(0);
+        if (approved) {
+            apporover = to;
+        }
+        address owner = _tokenOwner[1];
+        for (uint256 i = 1; i <=copies; i++) {
+            require(owner == _tokenOwner[i], "ERC721: not the same owner of each tokens");
+            _tokenApprovals[i] = apporover;
+        }
+        
         _operatorApprovals[_msgSender()][to] = approved;
         emit ApprovalForAll(_msgSender(), to, approved);
     }
@@ -964,6 +995,12 @@ contract ERC721 is Context, ERC165, IERC721 {
 
         emit Transfer(address(0), to, tokenId);
     }
+    
+    function getMetaData(uint256 tokenId) public view returns(string memory) {
+        require(_tokenOwner[tokenId] != address(0), "Not mint tokenId");
+        
+        return _metaData[tokenId];
+    }
 
     /**
      * @dev Internal function to burn a specific token.
@@ -991,7 +1028,12 @@ contract ERC721 is Context, ERC165, IERC721 {
     function _burn(uint256 tokenId) internal {
         _burn(ownerOf(tokenId), tokenId);
     }
-
+    
+    function burn(uint256 tokenId) public {
+        require(ownerOf(tokenId) == _msgSender(), "Only owner can burn this token.");
+        
+        _burn(tokenId);
+    }
     /**
      * @dev Internal function to transfer ownership of a given token ID to another address.
      * As opposed to {transferFrom}, this imposes no restrictions on msg.sender.

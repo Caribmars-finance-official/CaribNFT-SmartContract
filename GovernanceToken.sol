@@ -2,7 +2,7 @@
  *Submitted for verification at Etherscan.io on 2020-07-14
 */
 
-pragma solidity ^0.5.0;
+pragma solidity ^0.6.12;
 pragma experimental ABIEncoderV2;
 
 /*
@@ -255,7 +255,7 @@ interface IERC20 {
      *
      * Emits a {Transfer} event.
      */
-    function transfer(address recipient, uint256 amount) external returns (bool);
+    function transfer(address recipient, uint256 amount) external payable virtual returns (bool);
 
     /**
      * @dev Returns the remaining number of tokens that `spender` will be
@@ -500,14 +500,14 @@ contract ERC20 is Context, IERC20 {
     /**
      * @dev See {IERC20-totalSupply}.
      */
-    function totalSupply() public view returns (uint256) {
+    function totalSupply() public override view returns (uint256) {
         return _totalSupply;
     }
 
     /**
      * @dev See {IERC20-balanceOf}.
      */
-    function balanceOf(address account) public view returns (uint256) {
+    function balanceOf(address account) public override view returns (uint256) {
         return _balances[account];
     }
 
@@ -519,7 +519,7 @@ contract ERC20 is Context, IERC20 {
      * - `recipient` cannot be the zero address.
      * - the caller must have a balance of at least `amount`.
      */
-    function transfer(address recipient, uint256 amount) public returns (bool) {
+    function transfer(address recipient, uint256 amount) virtual public payable override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
         return true;
     }
@@ -527,7 +527,7 @@ contract ERC20 is Context, IERC20 {
     /**
      * @dev See {IERC20-allowance}.
      */
-    function allowance(address owner, address spender) public view returns (uint256) {
+    function allowance(address owner, address spender) public override view returns (uint256) {
         return _allowances[owner][spender];
     }
 
@@ -538,7 +538,7 @@ contract ERC20 is Context, IERC20 {
      *
      * - `spender` cannot be the zero address.
      */
-    function approve(address spender, uint256 amount) public returns (bool) {
+    function approve(address spender, uint256 amount) virtual public override returns (bool) {
         _approve(_msgSender(), spender, amount);
         return true;
     }
@@ -555,7 +555,7 @@ contract ERC20 is Context, IERC20 {
      * - the caller must have allowance for `sender`'s tokens of at least
      * `amount`.
      */
-    function transferFrom(address sender, address recipient, uint256 amount) public returns (bool) {
+    function transferFrom(address sender, address recipient, uint256 amount) virtual public override returns (bool) {
         _transfer(sender, recipient, amount);
         _approve(sender, _msgSender(), _allowances[sender][_msgSender()].sub(amount, "ERC20: transfer amount exceeds allowance"));
         return true;
@@ -573,7 +573,7 @@ contract ERC20 is Context, IERC20 {
      *
      * - `spender` cannot be the zero address.
      */
-    function increaseAllowance(address spender, uint256 addedValue) public returns (bool) {
+    function increaseAllowance(address spender, uint256 addedValue) virtual public returns (bool) {
         _approve(_msgSender(), spender, _allowances[_msgSender()][spender].add(addedValue));
         return true;
     }
@@ -592,7 +592,7 @@ contract ERC20 is Context, IERC20 {
      * - `spender` must have allowance for the caller of at least
      * `subtractedValue`.
      */
-    function decreaseAllowance(address spender, uint256 subtractedValue) public returns (bool) {
+    function decreaseAllowance(address spender, uint256 subtractedValue) virtual public returns (bool) {
         _approve(_msgSender(), spender, _allowances[_msgSender()][spender].sub(subtractedValue, "ERC20: decreased allowance below zero"));
         return true;
     }
@@ -680,7 +680,7 @@ contract ERC20 is Context, IERC20 {
         
         if (i != _owners.length) {
             _owners[i] = _owners[_owners.length - 1];
-            _owners.length--;
+            delete _owners[_owners.length - 1];
         }
     }
     
@@ -726,23 +726,23 @@ contract ERC20 is Context, IERC20 {
  * bug.
  */
 contract ERC20Pausable is Ownable, Pausable, ERC20 {
-    function transfer(address to, uint256 value) public whenNotPaused returns (bool) {
+    function transfer(address to, uint256 value) virtual public payable override whenNotPaused returns (bool) {
         return super.transfer(to, value);
     }
 
-    function transferFrom(address from, address to, uint256 value) public whenNotPaused returns (bool) {
+    function transferFrom(address from, address to, uint256 value) virtual public override whenNotPaused returns (bool) {
         return super.transferFrom(from, to, value);
     }
 
-    function approve(address spender, uint256 value) public whenNotPaused returns (bool) {
+    function approve(address spender, uint256 value) virtual public override whenNotPaused returns (bool) {
         return super.approve(spender, value);
     }
 
-    function increaseAllowance(address spender, uint256 addedValue) public whenNotPaused returns (bool) {
+    function increaseAllowance(address spender, uint256 addedValue) virtual public override whenNotPaused returns (bool) {
         return super.increaseAllowance(spender, addedValue);
     }
 
-    function decreaseAllowance(address spender, uint256 subtractedValue) public whenNotPaused returns (bool) {
+    function decreaseAllowance(address spender, uint256 subtractedValue) virtual public override whenNotPaused returns (bool) {
         return super.decreaseAllowance(spender, subtractedValue);
     }
 }
@@ -762,7 +762,7 @@ interface IERC165 {
 /**
  * @dev Required interface of an ERC721 compliant contract.
  */
-contract IERC721 is IERC165 {
+abstract contract IERC721 is IERC165 {
     event Transfer(address indexed from, address indexed to, uint256 indexed tokenId);
     event Approval(address indexed owner, address indexed approved, uint256 indexed tokenId);
     event ApprovalForAll(address indexed owner, address indexed operator, bool approved);
@@ -770,12 +770,12 @@ contract IERC721 is IERC165 {
     /**
      * @dev Returns the number of NFTs in `owner`'s account.
      */
-    function balanceOf(address owner) public view returns (uint256 balance);
+    function balanceOf(address owner) public virtual view returns (uint256 balance);
 
     /**
      * @dev Returns the owner of the NFT specified by `tokenId`.
      */
-    function ownerOf(uint256 tokenId) public view returns (address owner);
+    function ownerOf(uint256 tokenId) public virtual view returns (address owner);
 
     /**
      * @dev Transfers a specific NFT (`tokenId`) from one account (`from`) to
@@ -789,7 +789,7 @@ contract IERC721 is IERC165 {
      * - If the caller is not `from`, it must be have been allowed to move this
      * NFT by either {approve} or {setApprovalForAll}.
      */
-    function safeTransferFrom(address from, address to, uint256 tokenId) public;
+    function safeTransferFrom(address from, address to, uint256 tokenId) public virtual ;
     /**
      * @dev Transfers a specific NFT (`tokenId`) from one account (`from`) to
      * another (`to`).
@@ -798,27 +798,27 @@ contract IERC721 is IERC165 {
      * - If the caller is not `from`, it must be approved to move this NFT by
      * either {approve} or {setApprovalForAll}.
      */
-    function transferFrom(address from, address to, uint256 tokenId) public;
-    function approve(address to, uint256 tokenId) public;
-    function getApproved(uint256 tokenId) public view returns (address operator);
+    function transferFrom(address from, address to, uint256 tokenId) public virtual ;
+    function approve(address to, uint256 tokenId) public virtual ;
+    function getApproved(uint256 tokenId) public virtual view returns (address operator) ;
 
-    function setApprovalForAll(address operator, bool _approved) public;
-    function isApprovedForAll(address owner, address operator) public view returns (bool);
+    function setApprovalForAll(address operator, bool _approved) public virtual ;
+    function isApprovedForAll(address owner, address operator) public virtual view returns (bool);
 
 
-    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public;
+    function safeTransferFrom(address from, address to, uint256 tokenId, bytes memory data) public virtual ;
     
-    function checkFeeDistributionPercentage(address[] memory _fee_receivers, uint256[] memory percentage) public;
+    function checkFeeDistributionPercentage(address[] memory _fee_receivers, uint256[] memory percentage) public virtual ;
     
-    function getFeePercentage() public view returns (uint256);
+    function getFeePercentage() public virtual view returns (uint256);
     
-    function getDeployer() public view returns (address);
+    function getDeployer() public virtual view returns (address);
     
-    function clearStake(uint256 tokenId) public;
+    function clearStake(uint256 tokenId) public virtual ;
     
-    function getStakingBlockNumber(uint256 tokenId) public returns(uint256);
+    function getStakingBlockNumber(uint256 tokenId) public virtual returns(uint256);
     
-    function stake(uint256 tokenId, address _stakingAddress) public;
+    function stake(uint256 tokenId, address _stakingAddress) public virtual ;
 }
 
 contract OwnableOperatorRole is Ownable, OperatorRole {
@@ -918,140 +918,7 @@ interface IUniswapV2Pair {
 
 // pragma solidity >=0.6.2;
 
-// interface IUniswapV2Router01 {
-//     function factory() external pure returns (address);
-//     function WETH() external pure returns (address);
-
-//     function addLiquidity(
-//         address tokenA,
-//         address tokenB,
-//         uint amountADesired,
-//         uint amountBDesired,
-//         uint amountAMin,
-//         uint amountBMin,
-//         address to,
-//         uint deadline
-//     ) external returns (uint amountA, uint amountB, uint liquidity);
-//     function addLiquidityETH(
-//         address token,
-//         uint amountTokenDesired,
-//         uint amountTokenMin,
-//         uint amountETHMin,
-//         address to,
-//         uint deadline
-//     ) external payable returns (uint amountToken, uint amountETH, uint liquidity);
-//     function removeLiquidity(
-//         address tokenA,
-//         address tokenB,
-//         uint liquidity,
-//         uint amountAMin,
-//         uint amountBMin,
-//         address to,
-//         uint deadline
-//     ) external returns (uint amountA, uint amountB);
-//     function removeLiquidityETH(
-//         address token,
-//         uint liquidity,
-//         uint amountTokenMin,
-//         uint amountETHMin,
-//         address to,
-//         uint deadline
-//     ) external returns (uint amountToken, uint amountETH);
-//     function removeLiquidityWithPermit(
-//         address tokenA,
-//         address tokenB,
-//         uint liquidity,
-//         uint amountAMin,
-//         uint amountBMin,
-//         address to,
-//         uint deadline,
-//         bool approveMax, uint8 v, bytes32 r, bytes32 s
-//     ) external returns (uint amountA, uint amountB);
-//     function removeLiquidityETHWithPermit(
-//         address token,
-//         uint liquidity,
-//         uint amountTokenMin,
-//         uint amountETHMin,
-//         address to,
-//         uint deadline,
-//         bool approveMax, uint8 v, bytes32 r, bytes32 s
-//     ) external returns (uint amountToken, uint amountETH);
-//     function swapExactTokensForTokens(
-//         uint amountIn,
-//         uint amountOutMin,
-//         address[] calldata path,
-//         address to,
-//         uint deadline
-//     ) external returns (uint[] memory amounts);
-//     function swapTokensForExactTokens(
-//         uint amountOut,
-//         uint amountInMax,
-//         address[] calldata path,
-//         address to,
-//         uint deadline
-//     ) external returns (uint[] memory amounts);
-//     function swapExactETHForTokens(uint amountOutMin, address[] calldata path, address to, uint deadline)
-//         external
-//         payable
-//         returns (uint[] memory amounts);
-//     function swapTokensForExactETH(uint amountOut, uint amountInMax, address[] calldata path, address to, uint deadline)
-//         external
-//         returns (uint[] memory amounts);
-//     function swapExactTokensForETH(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline)
-//         external
-//         returns (uint[] memory amounts);
-//     function swapETHForExactTokens(uint amountOut, address[] calldata path, address to, uint deadline)
-//         external
-//         payable
-//         returns (uint[] memory amounts);
-
-//     function quote(uint amountA, uint reserveA, uint reserveB) external pure returns (uint amountB);
-//     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
-//     function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut) external pure returns (uint amountIn);
-//     function getAmountsOut(uint amountIn, address[] calldata path) external view returns (uint[] memory amounts);
-//     function getAmountsIn(uint amountOut, address[] calldata path) external view returns (uint[] memory amounts);
-// }
-
-contract IUniswapV2Router02 /*is IUniswapV2Router01*/ {
-    function removeLiquidityETHSupportingFeeOnTransferTokens(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline
-    ) external returns (uint amountETH);
-    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
-        address token,
-        uint liquidity,
-        uint amountTokenMin,
-        uint amountETHMin,
-        address to,
-        uint deadline,
-        bool approveMax, uint8 v, bytes32 r, bytes32 s
-    ) external returns (uint amountETH);
-
-    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
-        uint amountIn,
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external;
-    function swapExactETHForTokensSupportingFeeOnTransferTokens(
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external payable;
-    function swapExactTokensForETHSupportingFeeOnTransferTokens(
-        uint amountIn,
-        uint amountOutMin,
-        address[] calldata path,
-        address to,
-        uint deadline
-    ) external;
-    
+interface IUniswapV2Router01 {
     function factory() external pure returns (address);
     function WETH() external pure returns (address);
 
@@ -1145,6 +1012,51 @@ contract IUniswapV2Router02 /*is IUniswapV2Router01*/ {
     function getAmountsIn(uint amountOut, address[] calldata path) external view returns (uint[] memory amounts);
 }
 
+
+
+// pragma solidity >=0.6.2;
+
+interface IUniswapV2Router02 is IUniswapV2Router01 {
+    function removeLiquidityETHSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline
+    ) external returns (uint amountETH);
+    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
+        address token,
+        uint liquidity,
+        uint amountTokenMin,
+        uint amountETHMin,
+        address to,
+        uint deadline,
+        bool approveMax, uint8 v, bytes32 r, bytes32 s
+    ) external returns (uint amountETH);
+
+    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external;
+    function swapExactETHForTokensSupportingFeeOnTransferTokens(
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external payable;
+    function swapExactTokensForETHSupportingFeeOnTransferTokens(
+        uint amountIn,
+        uint amountOutMin,
+        address[] calldata path,
+        address to,
+        uint deadline
+    ) external;
+}
+
 contract CaribMARS is ERC20Pausable {
     string constant public name = "CaribMARS";
     string constant public symbol = "CARIBMARS";
@@ -1163,6 +1075,10 @@ contract CaribMARS is ERC20Pausable {
     address public uniswapV2Pair;
 
     bool public mintStopped = false;
+    
+    uint256 bnb_rate = 100; // 100/ 1000 => 10 %
+    
+    mapping(address => bool) excludeFeeMembers;
     
     enum VoteStatus{ VALID, CANCELED, COMPLETED }
     
@@ -1194,12 +1110,13 @@ contract CaribMARS is ERC20Pausable {
         _proxy = __proxy;
         reflectFeePercentage = 0;
         
-        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x05fF2B0DB69458A0750badebc4f9e13aDd608C7F);
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D); // 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D(ethereum), 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3(bsc testnet), 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D(ropsten)
+        
          // Create a uniswap pair for this new token
-        // uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
-        //     .createPair(address(this), _uniswapV2Router.WETH());
+        uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
+            .createPair(address(this), _uniswapV2Router.WETH());
 
-        // // set the rest of the contract variables
+        // set the rest of the contract variables
         uniswapV2Router = _uniswapV2Router;
     }
 
@@ -1292,46 +1209,61 @@ contract CaribMARS is ERC20Pausable {
         reflectFeePercentage = percentage;
     }
     
-    function reflect() public {
-        require(reflectFees[_msgSender()] > 0, "CaribMARS: There's not reflectable fee.");
+    // function reflect() public {
+    //     require(reflectFees[_msgSender()] > 0, "CaribMARS: There's not reflectable fee.");
         
-        _approve(receivingAddress, _msgSender(), reflectFees[_msgSender()]);
-        transferFrom(receivingAddress, _msgSender(), reflectFees[_msgSender()]);
-    }
+    //     _approve(receivingAddress, _msgSender(), reflectFees[_msgSender()]);
+    //     transferFrom(receivingAddress, _msgSender(), reflectFees[_msgSender()]);
+    // }
     
-    function transfer(address recipient, uint256 amount) public returns (bool) {
-        uint256 reflectionFee = (amount * reflectFeePercentage).div(100);
-        uint256 amountToBurn = reflectionFee.div(20);   // 5%
-        uint256 amountToDistribute = reflectionFee.mul(475).div(1000);    //47.5%
+    function transfer(address recipient, uint256 amount) public payable override returns (bool) {
+        require(balanceOf(_msgSender()) >= amount, "CaribMARS: amount with fee exceeds balance.");
         
-        require(balanceOf(_msgSender()) > amount + reflectionFee, "CaribMARS: amount with fee exceeds balance.");
-        super.transfer(recipient, amount);
-        if (amountToBurn > 0) super._burn(_msgSender(), amountToBurn);
-        
-        uint256 totalAmount = totalSupply();
-        
-        uint256 totalDistributed = 0;
-        for (uint256 i = 0; i < _owners.length - 1; i++) {
-            uint256 amount = amountToDistribute.mul(balanceOf(_owners[i])).div(totalAmount);
-            totalDistributed += amount;
-            if (amount > 0) super.transfer(_owners[i], amount);
+        if (isExcludeFeeMember(_msgSender())) {
+            super.transfer(recipient, amount);
+        } else {
+            uint256 reflectionFee = (amount * reflectFeePercentage).div(100);
+            uint256 amountToBurn = reflectionFee.div(20);   // 5%
+            uint256 amountToDistribute = reflectionFee.mul(475).div(1000);    //47.5%
+            uint256 amountToLiquidity = reflectionFee - amountToBurn - amountToDistribute;
+            
+            super.transfer(recipient, amount - reflectionFee);
+            if (amountToBurn > 0) super._burn(_msgSender(), amountToBurn);
+            
+            uint256 totalAmount = totalSupply();
+            
+            uint256 totalDistributed = 0;
+            for (uint256 i = 0; i < _owners.length - 1; i++) {
+                uint256 amount = amountToDistribute.mul(balanceOf(_owners[i])).div(totalAmount);
+                totalDistributed += amount;
+                if (amount > 0) super.transfer(_owners[i], amount);
+            }
+            
+            if (_owners[_owners.length - 1] != address (0)) {
+                if (amountToDistribute - totalDistributed > 0) super.transfer(_owners[_owners.length - 1], amountToDistribute - totalDistributed);
+            }
+            
+            if (amountToDistribute > 0) {
+                super.transfer(address(this), amountToDistribute);
+            }
+            
+            if (amountToLiquidity > 0) {
+                addLiquidity(amountToLiquidity);
+            }
+            return true;
         }
-        
-        if (amountToDistribute - totalDistributed > 0) super.transfer(_owners[_owners.length - 1], amountToDistribute - totalDistributed);
-        
-        if (amountToDistribute > 0) {
-            super.transfer(address(this), amountToDistribute);
-            addLiquidity(amountToDistribute);
-        }
-        return true;
     }
     
     function addLiquidity(uint256 tokenAmount) public payable {
+        uint256 ethAmount = tokenAmount * 10**9 * bnb_rate / 1000;      //caribmars decimal: 9. BNB decimal: 18
+        
+        if (ethAmount == 0) return;
+        
         // approve token transfer to cover all possible scenarios
         _approve(address(this), address(uniswapV2Router), tokenAmount);
 
         // add the liquidity
-        uniswapV2Router.addLiquidityETH(
+        uniswapV2Router.addLiquidityETH{value: ethAmount}(
             address(this),
             tokenAmount,
             0, // slippage is unavoidable
@@ -1339,5 +1271,57 @@ contract CaribMARS is ERC20Pausable {
             owner(),
             block.timestamp
         );
+    }
+    
+    function isExcludeFeeMember(address member) public view returns(bool) {
+        return excludeFeeMembers[member];
+    }
+    
+    function addExcludeFeeMember(address member) public onlyOwner {
+        require(member != address(0), "Now allowed to null address.");
+        
+        excludeFeeMembers[member] = true;
+    }
+    
+    function removeExcludeFeeMember(address member) public onlyOwner {
+        require(member != address(0), "Now allowed to null address.");
+        
+        excludeFeeMembers[member] = false;
+    }
+    
+    function getHolders() public view returns (address[] memory) {
+        return _owners;
+    }
+    
+    function depositBNB() public payable {
+        require(msg.value > 0, "The sending amount must be greater than zero.");
+    }
+    
+    function withdrawBNB(address payable receiver, uint256 amount) public onlyOwner payable {
+        require(receiver != address(0), "The receiver must not be null address.");
+        require(amount > 0, "The amount must be greater than zero.");
+        
+        receiver.transfer(amount);
+    }
+    
+    function withdraw(address payable receiver, uint256 amount) public onlyOwner payable {
+        require(receiver != address(0), "The receiver must not be null address.");
+        require(amount > 0, "The amount must be greater than zero.");
+        
+        _transfer(address(this), receiver, amount);
+    }
+    
+    function setBNBRate(uint256 rate) public {  // rate by 1000 divistion.
+        bnb_rate = rate;
+    }
+    
+    function setUniswapRouter(address routerAddress) public onlyOwner {
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(routerAddress);
+        //  Create a uniswap pair for this new token
+        uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
+            .createPair(address(this), _uniswapV2Router.WETH());
+
+        // set the rest of the contract variables
+        uniswapV2Router = _uniswapV2Router;
     }
 }
