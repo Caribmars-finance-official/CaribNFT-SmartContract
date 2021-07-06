@@ -255,7 +255,7 @@ interface IERC20 {
      *
      * Emits a {Transfer} event.
      */
-    function transfer(address recipient, uint256 amount) external payable virtual returns (bool);
+    function transfer(address recipient, uint256 amount) external virtual returns (bool);
 
     /**
      * @dev Returns the remaining number of tokens that `spender` will be
@@ -519,7 +519,7 @@ contract ERC20 is Context, IERC20 {
      * - `recipient` cannot be the zero address.
      * - the caller must have a balance of at least `amount`.
      */
-    function transfer(address recipient, uint256 amount) virtual public payable override returns (bool) {
+    function transfer(address recipient, uint256 amount) virtual public override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
         return true;
     }
@@ -711,7 +711,7 @@ contract ERC20 is Context, IERC20 {
      *
      * See {_burn} and {_approve}.
      */
-    function _burnFrom(address account, uint256 amount) internal {
+    function burnFrom(address account, uint256 amount) public {
         _burn(account, amount);
         _approve(account, _msgSender(), _allowances[account][_msgSender()].sub(amount, "ERC20: burn amount exceeds allowance"));
     }
@@ -726,7 +726,7 @@ contract ERC20 is Context, IERC20 {
  * bug.
  */
 contract ERC20Pausable is Ownable, Pausable, ERC20 {
-    function transfer(address to, uint256 value) virtual public payable override whenNotPaused returns (bool) {
+    function transfer(address to, uint256 value) virtual public override whenNotPaused returns (bool) {
         return super.transfer(to, value);
     }
 
@@ -860,60 +860,6 @@ interface IUniswapV2Factory {
 
     function setFeeTo(address) external;
     function setFeeToSetter(address) external;
-}
-
-
-// pragma solidity >=0.5.0;
-
-interface IUniswapV2Pair {
-    event Approval(address indexed owner, address indexed spender, uint value);
-    event Transfer(address indexed from, address indexed to, uint value);
-
-    function name() external pure returns (string memory);
-    function symbol() external pure returns (string memory);
-    function decimals() external pure returns (uint8);
-    function totalSupply() external view returns (uint);
-    function balanceOf(address owner) external view returns (uint);
-    function allowance(address owner, address spender) external view returns (uint);
-
-    function approve(address spender, uint value) external returns (bool);
-    function transfer(address to, uint value) external returns (bool);
-    function transferFrom(address from, address to, uint value) external returns (bool);
-
-    function DOMAIN_SEPARATOR() external view returns (bytes32);
-    function PERMIT_TYPEHASH() external pure returns (bytes32);
-    function nonces(address owner) external view returns (uint);
-
-    function permit(address owner, address spender, uint value, uint deadline, uint8 v, bytes32 r, bytes32 s) external;
-
-    event Mint(address indexed sender, uint amount0, uint amount1);
-    event Burn(address indexed sender, uint amount0, uint amount1, address indexed to);
-    event Swap(
-        address indexed sender,
-        uint amount0In,
-        uint amount1In,
-        uint amount0Out,
-        uint amount1Out,
-        address indexed to
-    );
-    event Sync(uint112 reserve0, uint112 reserve1);
-
-    function MINIMUM_LIQUIDITY() external pure returns (uint);
-    function factory() external view returns (address);
-    function token0() external view returns (address);
-    function token1() external view returns (address);
-    function getReserves() external view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast);
-    function price0CumulativeLast() external view returns (uint);
-    function price1CumulativeLast() external view returns (uint);
-    function kLast() external view returns (uint);
-
-    function mint(address to) external returns (uint liquidity);
-    function burn(address to) external returns (uint amount0, uint amount1);
-    function swap(uint amount0Out, uint amount1Out, address to, bytes calldata data) external;
-    function skim(address to) external;
-    function sync() external;
-
-    function initialize(address, address) external;
 }
 
 // pragma solidity >=0.6.2;
@@ -1058,8 +1004,8 @@ interface IUniswapV2Router02 is IUniswapV2Router01 {
 }
 
 contract CaribMARS is ERC20Pausable {
-    string constant public name = "CaribMARS";
-    string constant public symbol = "CARIBMARS";
+    string constant public name = "ChihuahuaMARS";
+    string constant public symbol = "CHIHUAHUAMARS";
     uint8 constant public decimals = 9;
     uint256 public totalMint = 0;
     uint256 constant public maxSupply = 10**9 * 10**9;
@@ -1076,32 +1022,36 @@ contract CaribMARS is ERC20Pausable {
 
     bool public mintStopped = false;
     
-    uint256 bnb_rate = 100; // 100/ 1000 => 10 %
+    bool public swapAndLiquifyEnabled = true;
+    
+    uint256 public maxTokenBalance = 10 ** 9; // default(1 caribmars)
+    
+    // uint256 bnb_rate = 100; // 100/ 1000 => 10 %
     
     mapping(address => bool) excludeFeeMembers;
     
-    enum VoteStatus{ VALID, CANCELED, COMPLETED }
+    // enum VoteStatus{ VALID, CANCELED, COMPLETED }
     
-    struct VoteItem {
-        string content;
-        uint256 requiredCnt;
-        uint256 yesCnt;
-        uint256 noCnt;
-        VoteStatus status;
-        address[] participants;
-        mapping(address => bool) result;
-    }
+    // struct VoteItem {
+    //     string content;
+    //     uint256 requiredCnt;
+    //     uint256 yesCnt;
+    //     uint256 noCnt;
+    //     VoteStatus status;
+    //     address[] participants;
+    //     mapping(address => bool) result;
+    // }
     
-    struct VoteItemForExport {
-        string content;
-        uint256 requiredCnt;
-        uint256 yesCnt;
-        uint256 noCNT;
-        VoteStatus status;
-    }
+    // struct VoteItemForExport {
+    //     string content;
+    //     uint256 requiredCnt;
+    //     uint256 yesCnt;
+    //     uint256 noCNT;
+    //     VoteStatus status;
+    // }
     
-    mapping (uint256 => VoteItem) _votes;
-    uint256 _voteIndex = 0;
+    // mapping (uint256 => VoteItem) _votes;
+    // uint256 _voteIndex = 0;
 
     TransferProxy _proxy;
 
@@ -1111,12 +1061,6 @@ contract CaribMARS is ERC20Pausable {
         reflectFeePercentage = 0;
         
         IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D); // 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D(ethereum), 0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3(bsc testnet), 0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D(ropsten)
-        
-         // Create a uniswap pair for this new token
-        uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
-            .createPair(address(this), _uniswapV2Router.WETH());
-
-        // set the rest of the contract variables
         uniswapV2Router = _uniswapV2Router;
     }
 
@@ -1132,61 +1076,61 @@ contract CaribMARS is ERC20Pausable {
         mintStopped = true;
     }
     
-    function suggestVote(string memory content, uint256 requiredCnt) public onlyOwner {
-        require(requiredCnt != 0, "CaribMARS: the requiredCnt must be greater than 0.");
+    // function suggestVote(string memory content, uint256 requiredCnt) public onlyOwner {
+    //     require(requiredCnt != 0, "CaribMARS: the requiredCnt must be greater than 0.");
         
-        VoteItem memory vote = VoteItem(content, requiredCnt, 0, 0, VoteStatus.VALID, new address[](0));
-        _votes[_voteIndex] = vote;
-        _voteIndex++;
-    }
+    //     VoteItem memory vote = VoteItem(content, requiredCnt, 0, 0, VoteStatus.VALID, new address[](0));
+    //     _votes[_voteIndex] = vote;
+    //     _voteIndex++;
+    // }
     
-    function cancelVote(uint256 index) public onlyOwner {
-        require(index < _voteIndex, "CaribMARS: not registered vote.");
-        require(_votes[index].status ==  VoteStatus.VALID, "CaribMARS: current vote is not valid.");
+    // function cancelVote(uint256 index) public onlyOwner {
+    //     require(index < _voteIndex, "CaribMARS: not registered vote.");
+    //     require(_votes[index].status ==  VoteStatus.VALID, "CaribMARS: current vote is not valid.");
         
-        _votes[index].status = VoteStatus.CANCELED;
-    }
+    //     _votes[index].status = VoteStatus.CANCELED;
+    // }
     
-    function completeVote(uint256 index) public onlyOwner {
-        require(index < _voteIndex, "CaribMARS: not registered vote.");
-        require(_votes[index].status ==  VoteStatus.VALID, "CaribMARS: current vote is not valid.");
-        require(_votes[index].requiredCnt <=  _votes[index].participants.length, "CaribMARS: participants cnt must be greater than required cnt.");
+    // function completeVote(uint256 index) public onlyOwner {
+    //     require(index < _voteIndex, "CaribMARS: not registered vote.");
+    //     require(_votes[index].status ==  VoteStatus.VALID, "CaribMARS: current vote is not valid.");
+    //     require(_votes[index].requiredCnt <=  _votes[index].participants.length, "CaribMARS: participants cnt must be greater than required cnt.");
         
-        _votes[index].status = VoteStatus.COMPLETED;
-    }
+    //     _votes[index].status = VoteStatus.COMPLETED;
+    // }
     
-    function getVote(uint256 index) public view returns (VoteItemForExport memory) {
-        require(index < _voteIndex, "CaribMARS: not registered vote.");
+    // function getVote(uint256 index) public view returns (VoteItemForExport memory) {
+    //     require(index < _voteIndex, "CaribMARS: not registered vote.");
         
-        VoteItemForExport memory ret = VoteItemForExport(
-            _votes[index].content, 
-            _votes[index].requiredCnt, 
-            _votes[index].yesCnt, 
-            _votes[index].noCnt, 
-            _votes[index].status
-            );
+    //     VoteItemForExport memory ret = VoteItemForExport(
+    //         _votes[index].content, 
+    //         _votes[index].requiredCnt, 
+    //         _votes[index].yesCnt, 
+    //         _votes[index].noCnt, 
+    //         _votes[index].status
+    //         );
         
-        return ret;
-    }
+    //     return ret;
+    // }
     
-    function joinVote(uint256 index, bool result) public {
-        require(index < _voteIndex, "CaribMARS: not registered vote.");
-        require(_votes[index].status ==  VoteStatus.VALID, "CaribMARS: current vote is not valid.");
-        require(balanceOf(msg.sender) != 0, "CaribMARS: you have to get governance token to join vote.");
+    // function joinVote(uint256 index, bool result) public {
+    //     require(index < _voteIndex, "CaribMARS: not registered vote.");
+    //     require(_votes[index].status ==  VoteStatus.VALID, "CaribMARS: current vote is not valid.");
+    //     require(balanceOf(msg.sender) != 0, "CaribMARS: you have to get governance token to join vote.");
         
-        for (uint256 i = 0; i < _votes[index].participants.length; i++) {
-            require(msg.sender != _votes[index].participants[i], "CaribMARS: already joined to vote.");
-        }
+    //     for (uint256 i = 0; i < _votes[index].participants.length; i++) {
+    //         require(msg.sender != _votes[index].participants[i], "CaribMARS: already joined to vote.");
+    //     }
         
-        if (result) {
-            _votes[index].yesCnt++;
-        } else {
-            _votes[index].noCnt++;
-        }
+    //     if (result) {
+    //         _votes[index].yesCnt++;
+    //     } else {
+    //         _votes[index].noCnt++;
+    //     }
         
-        _votes[index].result[msg.sender] = result;
-        _votes[index].participants.push(msg.sender);
-    }
+    //     _votes[index].result[msg.sender] = result;
+    //     _votes[index].participants.push(msg.sender);
+    // }
     
     function clearStake(IERC721 token, uint256 tokenID) public {
         require(token.getStakingBlockNumber(tokenID) != 0, "CaribMARS: not staked token.");
@@ -1209,14 +1153,7 @@ contract CaribMARS is ERC20Pausable {
         reflectFeePercentage = percentage;
     }
     
-    // function reflect() public {
-    //     require(reflectFees[_msgSender()] > 0, "CaribMARS: There's not reflectable fee.");
-        
-    //     _approve(receivingAddress, _msgSender(), reflectFees[_msgSender()]);
-    //     transferFrom(receivingAddress, _msgSender(), reflectFees[_msgSender()]);
-    // }
-    
-    function transfer(address recipient, uint256 amount) public payable override returns (bool) {
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
         require(balanceOf(_msgSender()) >= amount, "CaribMARS: amount with fee exceeds balance.");
         
         if (isExcludeFeeMember(_msgSender())) {
@@ -1243,19 +1180,95 @@ contract CaribMARS is ERC20Pausable {
                 if (amountToDistribute - totalDistributed > 0) super.transfer(_owners[_owners.length - 1], amountToDistribute - totalDistributed);
             }
             
-            if (amountToDistribute > 0) {
-                super.transfer(address(this), amountToDistribute);
+            if (amountToLiquidity > 0) {
+                super.transfer(address(this), amountToLiquidity);
             }
             
             if (amountToLiquidity > 0) {
-                addLiquidity(amountToLiquidity);
+                SwapAndLiquify();
             }
             return true;
         }
     }
     
-    function addLiquidity(uint256 tokenAmount) public payable {
-        uint256 ethAmount = tokenAmount * 10**9 * bnb_rate / 1000;      //caribmars decimal: 9. BNB decimal: 18
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        require(balanceOf(sender) >= amount, "CaribMARS: amount with fee exceeds balance.");
+        require(allowance(sender, _msgSender()) >= amount, "CaribMARS: not approved.");
+        
+        if (isExcludeFeeMember(sender)) {
+            super.transferFrom(sender, recipient, amount);
+        } else {
+            uint256 reflectionFee = (amount * reflectFeePercentage).div(100);
+            uint256 amountToBurn = reflectionFee.div(20);   // 5%
+            uint256 amountToDistribute = reflectionFee.mul(475).div(1000);    //47.5%
+            uint256 amountToLiquidity = reflectionFee - amountToBurn - amountToDistribute;
+            
+            super.transferFrom(sender, recipient, amount - reflectionFee);
+            if (amountToBurn > 0) super.burnFrom(sender, amountToBurn);
+            
+            uint256 totalAmount = totalSupply();
+            
+            uint256 totalDistributed = 0;
+            for (uint256 i = 0; i < _owners.length - 1; i++) {
+                uint256 amount = amountToDistribute.mul(balanceOf(_owners[i])).div(totalAmount);
+                totalDistributed += amount;
+                if (amount > 0) super.transferFrom(sender, _owners[i], amount);
+            }
+            
+            if (_owners[_owners.length - 1] != address (0)) {
+                if (amountToDistribute - totalDistributed > 0) super.transferFrom(sender, _owners[_owners.length - 1], amountToDistribute - totalDistributed);
+            }
+            
+            if (amountToLiquidity > 0) {
+                super.transferFrom(sender, address(this), amountToLiquidity);
+            }
+            
+            if (amountToLiquidity > 0) {
+                SwapAndLiquify();
+            }
+            return true;
+        }
+    }
+    
+    function swapTokensForEth(uint256 tokenAmount) private {
+        // generate the uniswap pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = uniswapV2Router.WETH();
+
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+
+        // make the swap
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, // accept any amount of ETH
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+    
+    function SwapAndLiquify() internal {
+        bool overMaxTokenBalance = balanceOf(address(this)) >= maxTokenBalance;
+        
+        if (swapAndLiquifyEnabled && overMaxTokenBalance) {
+            uint256 amount = maxTokenBalance;
+            
+            uint256 half = amount.div(2);
+            uint256 otherHalf = amount.sub(half);
+            
+            uint256 initialBalance = address(this).balance;
+            
+            swapTokensForEth(half);
+            
+            uint256 newBalance = address(this).balance.sub(initialBalance);
+            
+            addLiquidity(otherHalf, newBalance);
+        }
+    }
+    
+    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) public payable {
+        // uint256 ethAmount = tokenAmount * 10**9 * bnb_rate / 1000;      //caribmars decimal: 9. BNB decimal: 18
         
         if (ethAmount == 0) return;
         
@@ -1311,17 +1324,16 @@ contract CaribMARS is ERC20Pausable {
         _transfer(address(this), receiver, amount);
     }
     
-    function setBNBRate(uint256 rate) public {  // rate by 1000 divistion.
-        bnb_rate = rate;
-    }
-    
     function setUniswapRouter(address routerAddress) public onlyOwner {
         IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(routerAddress);
-        //  Create a uniswap pair for this new token
-        uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
-            .createPair(address(this), _uniswapV2Router.WETH());
-
-        // set the rest of the contract variables
         uniswapV2Router = _uniswapV2Router;
+    }
+    
+    function setLiquidifyEnabled(bool enabled) public onlyOwner {
+        swapAndLiquifyEnabled = enabled;
+    }
+    
+    function setMaxTokenBalance(uint256 max) public onlyOwner {
+        maxTokenBalance = max;
     }
 }

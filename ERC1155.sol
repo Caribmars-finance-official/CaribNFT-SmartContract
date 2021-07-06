@@ -952,7 +952,6 @@ contract ERC1155Base is Ownable, ERC1155Metadata_URI, HasContractURI, ERC1155 {
     }
 } 
 
-
 contract CaribNFT is Ownable, ERC1155Base {
     string public name;
     string public symbol;
