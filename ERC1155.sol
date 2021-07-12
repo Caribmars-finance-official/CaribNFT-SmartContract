@@ -1,4 +1,8 @@
 /**
+ *Submitted for verification at BscScan.com on 2021-07-06
+*/
+
+/**
  *Submitted for verification at Etherscan.io on 2020-05-27
 */
 
@@ -93,7 +97,6 @@ interface ERC1155TokenReceiver {
         @param _from      The address which previously owned the token
         @param _ids       An array containing ids of each token being transferred (order and length must match _values array)
         @param _values    An array containing amounts of each token being transferred (order and length must match _ids array)
-        @param _data      Additional data with no specified format
         @return           `bytes4(keccak256("onERC1155BatchReceived(address,address,uint256[],uint256[],bytes)"))`
     */
     function onERC1155BatchReceived(address _operator, address _from, uint256[] calldata _ids, uint256[] calldata _values, bytes calldata _data) external returns(bytes4);
@@ -174,9 +177,8 @@ contract IERC1155 is IERC165 {
         @param _to      Target address
         @param _id      ID of the token type
         @param _value   Transfer amount
-        @param _data    Additional data with no specified format, MUST be sent unaltered in call to `onERC1155Received` on `_to`
     */
-    function safeTransferFrom(address _from, address _to, uint256 _id, uint256 _value, bytes calldata _data) external;
+    function safeTransferFrom(address _from, address _to, uint256 _id, uint256 _value) external;
 
     /**
         @notice Transfers `_values` amount(s) of `_ids` from the `_from` address to the `_to` address specified (with safety call).
@@ -192,9 +194,8 @@ contract IERC1155 is IERC165 {
         @param _to      Target address
         @param _ids     IDs of each token type (order and length must match _values array)
         @param _values  Transfer amounts per token type (order and length must match _ids array)
-        @param _data    Additional data with no specified format, MUST be sent unaltered in call to the `ERC1155TokenReceiver` hook(s) on `_to`
     */
-    function safeBatchTransferFrom(address _from, address _to, uint256[] calldata _ids, uint256[] calldata _values, bytes calldata _data) external;
+    function safeBatchTransferFrom(address _from, address _to, uint256[] calldata _ids, uint256[] calldata _values) external;
 
     /**
         @notice Get the balance of an account's Tokens.
@@ -400,9 +401,8 @@ contract ERC1155 is IERC1155, ERC165, CommonConstants
         @param _to      Target address
         @param _id      ID of the token type
         @param _value   Transfer amount
-        @param _data    Additional data with no specified format, MUST be sent unaltered in call to `onERC1155Received` on `_to`
     */
-    function safeTransferFrom(address _from, address _to, uint256 _id, uint256 _value, bytes calldata _data) external {
+    function safeTransferFrom(address _from, address _to, uint256 _id, uint256 _value) external {
 
         require(_to != address(0x0), "_to must be non-zero.");
         require(_from == msg.sender || operatorApproval[_from][msg.sender] == true || approvals[_id][_from][msg.sender] >= _value, "Need operator approval for 3rd party transfers.");
@@ -411,15 +411,19 @@ contract ERC1155 is IERC1155, ERC165, CommonConstants
         // or if _id is not valid (balance will be 0)
         balances[_id][_from] = balances[_id][_from].sub(_value);
         balances[_id][_to]   = _value.add(balances[_id][_to]);
+        
+        if (_from != msg.sender && operatorApproval[_from][msg.sender] == false) {
+            approvals[_id][_from][msg.sender] = approvals[_id][_from][msg.sender].sub(_value);
+        }
 
         // MUST emit event
         emit TransferSingle(msg.sender, _from, _to, _id, _value);
 
         // Now that the balance is updated and the event was emitted,
         // call onERC1155Received if the destination is a contract.
-        if (_to.isContract()) {
-            _doSafeTransferAcceptanceCheck(msg.sender, _from, _to, _id, _value, _data);
-        }
+        // if (_to.isContract()) {
+        //     _doSafeTransferAcceptanceCheck(msg.sender, _from, _to, _id, _value, _data);
+        // }
     }
 
     /**
@@ -436,9 +440,8 @@ contract ERC1155 is IERC1155, ERC165, CommonConstants
         @param _to      Target address
         @param _ids     IDs of each token type (order and length must match _values array)
         @param _values  Transfer amounts per token type (order and length must match _ids array)
-        @param _data    Additional data with no specified format, MUST be sent unaltered in call to the `ERC1155TokenReceiver` hook(s) on `_to`
     */
-    function safeBatchTransferFrom(address _from, address _to, uint256[] calldata _ids, uint256[] calldata _values, bytes calldata _data) external {
+    function safeBatchTransferFrom(address _from, address _to, uint256[] calldata _ids, uint256[] calldata _values) external {
 
         // MUST Throw on errors
         require(_to != address(0x0), "destination address must be non-zero.");
@@ -465,9 +468,9 @@ contract ERC1155 is IERC1155, ERC165, CommonConstants
 
         // Now that the balances are updated and the events are emitted,
         // call onERC1155BatchReceived if the destination is a contract.
-        if (_to.isContract()) {
-            _doSafeBatchTransferAcceptanceCheck(msg.sender, _from, _to, _ids, _values, _data);
-        }
+        // if (_to.isContract()) {
+        //     _doSafeBatchTransferAcceptanceCheck(msg.sender, _from, _to, _ids, _values, _data);
+        // }
     }
 
     /**
