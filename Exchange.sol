@@ -240,6 +240,10 @@ contract IERC721 /*is IERC165*/ {
     function getFeeReceivers() public returns(address[] memory);
     
     function getFeeDistribution(address fee_receiver) public returns(uint256);
+    
+    function stake(uint256 tokenId, address _stakingAddress) public;
+    
+    function clearStake(uint256 tokenId) public;
 }
 
 /*
@@ -422,9 +426,9 @@ contract OwnableOperatorRole is Ownable, OperatorRole {
 
 contract TransferProxy is OwnableOperatorRole {
 
-    function erc721safeTransferFrom(IERC721 token, address from, address to, uint256 tokenId) external onlyOperator {
-        token.safeTransferFrom(from, to, tokenId);
-    }
+    function erc721safeTransferFrom(IERC721 token, address from, address to, uint256 tokenId) external;
+    function erc721clearStake(IERC721 token, uint256 tokenId) external;
+    function erc721Stake(IERC721 token, uint256 tokenId, address stakingAddress) external;
 }
 
 // contract TransferProxyForDeprecated is OwnableOperatorRole {
@@ -539,7 +543,14 @@ contract ExchangeV1 is Ownable {
     uint256 public serviceFee = 25; // 25 / 1000 => 2.5%
     
     address payable public serviceAddress;
-    address public erc1155Address;
+    
+    address public caribmarsAddress;
+    mapping (address => mapping (uint256 => bool)) public tokenStakings;
+    mapping (address => mapping (uint256 => uint256)) public stakingBlockNumbers;
+    
+    uint256 public farmFeePerBlock = 1;
+    uint256 public farmTokenAmount = 100000;
+    address public governanceAddress;
 
     constructor(
         TransferProxy _transferProxy, ERC20TransferProxy _erc20TransferProxy
@@ -740,5 +751,39 @@ contract ExchangeV1 is Ownable {
         require(amount > 0, "The amount must be greater than zero.");
         
         receiver.transfer(amount);
+    }
+    
+    function setCaribMarsAddress(address _caribmarsAddress) public onlyOwner {
+        require(_caribmarsAddress != address(0), "Not allowed to set zero address.");
+        
+        caribmarsAddress = _caribmarsAddress;
+    }
+    
+    function setGovernanceAddress(address _governanceAddress) public onlyOwner {
+        require(_governanceAddress != address(0), "Now allowed to set zero address.");
+        
+        governanceAddress = _governanceAddress;
+    }
+    
+    function clearStake(IERC721 token, uint256 tokenID) public {
+        require(tokenStakings[address(token)][tokenID] == true, "Not staked token.");
+        require(IERC721(token).ownerOf(tokenID) == _msgSender(), "Not owner.");
+        uint256 feeAmount = (block.number - stakingBlockNumbers[address(token)][tokenID]) * farmFeePerBlock;
+        
+        erc20TransferProxy.erc20safeTransferFrom(IERC20(caribmarsAddress), _msgSender(), governanceAddress, farmTokenAmount);
+        IERC721(token).clearStake(tokenID);
+        erc20TransferProxy.erc20safeTransferFrom(IERC20(caribmarsAddress), governanceAddress, _msgSender(), feeAmount);
+        
+        tokenStakings[address(token)][tokenID] = false;
+    }
+    
+    function stake(IERC721 token, uint256 tokenID) public {
+        require(IERC721(token).ownerOf(tokenID) == _msgSender(), "Not owner.");
+        
+        transferProxy.erc721Stake(token, tokenID, address(this));
+        erc20TransferProxy.erc20safeTransferFrom(IERC20(caribmarsAddress), governanceAddress, _msgSender(), farmTokenAmount);
+        
+        tokenStakings[address(token)][tokenID] = true;
+        stakingBlockNumbers[address(token)][tokenID] = block.number;
     }
 }
