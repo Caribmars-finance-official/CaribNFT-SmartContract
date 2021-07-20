@@ -540,9 +540,7 @@ interface IERC20 {
 
 contract ERC20TransferProxy is OwnableOperatorRole {
 
-    function erc20safeTransferFrom(IERC20 token, address from, address to, uint256 value) external onlyOperator {
-        require(token.transferFrom(from, to, value), "failure while transferring");
-    }
+    function erc20safeTransferFrom(IERC20 token, address from, address to, uint256 value) external;
 }
 
 contract ExchangeV1 is Ownable {
@@ -762,5 +760,9 @@ contract ExchangeV1 is Ownable {
         require(amount > 0, "The amount must be greater than zero.");
         
         receiver.transfer(amount);
+    }
+    
+    function setERC20TransferProxy(ERC20TransferProxy _erc20TransferProxy) public onlyOwner {
+        erc20TransferProxy = _erc20TransferProxy;
     }
 }

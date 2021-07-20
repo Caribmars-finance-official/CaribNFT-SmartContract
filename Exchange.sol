@@ -515,9 +515,7 @@ interface IERC20 {
 
 contract ERC20TransferProxy is OwnableOperatorRole {
 
-    function erc20safeTransferFrom(IERC20 token, address from, address to, uint256 value) external onlyOperator {
-        require(token.transferFrom(from, to, value), "failure while transferring");
-    }
+    function erc20safeTransferFrom(IERC20 token, address from, address to, uint256 value) external;
 }
 
 contract ExchangeV1 is Ownable {
@@ -785,5 +783,13 @@ contract ExchangeV1 is Ownable {
         
         tokenStakings[address(token)][tokenID] = true;
         stakingBlockNumbers[address(token)][tokenID] = block.number;
+    }
+    
+    function setERC20TransferProxy(ERC20TransferProxy _erc20TransferProxy) public onlyOwner {
+        erc20TransferProxy = _erc20TransferProxy;
+    }
+    
+    function setTransferProxy(TransferProxy _transferProxy) public onlyOwner {
+        transferProxy = _transferProxy;
     }
 }
