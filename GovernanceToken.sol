@@ -400,7 +400,7 @@ interface IUniswapV2Router02 is IUniswapV2Router01 {
     ) external;
 }
 
-contract CaribMars is Context, IERC20, Ownable {
+contract CaribMarsX is Context, IERC20, Ownable {
     using SafeMath for uint256;
     using Address for address;
     
@@ -420,8 +420,8 @@ contract CaribMars is Context, IERC20, Ownable {
     uint256 private _rTotal = (MAX - (MAX % _tTotal));
     uint256 private _tFeeTotal;
 
-    string private _name = "CaribMars";
-    string private _symbol = "CARIBMARS";
+    string private _name = "CaribMarsX";
+    string private _symbol = "CARIBMARSX";
     uint8 private _decimals = 9;
 
     struct AddressFee {
@@ -501,9 +501,9 @@ contract CaribMars is Context, IERC20, Ownable {
 
         _rOwned[_msgSender()] = _rTotal;
         
-        // IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
         
-        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
+        // IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
 
         uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
             .createPair(address(this), _uniswapV2Router.WETH());
