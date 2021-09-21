@@ -428,23 +428,31 @@ contract CaribMarsX is Context, IERC20, Ownable {
         bool enable;
         uint256 _taxFee;
         uint256 _liquidityFee;
+        uint256 _burnFee;
         uint256 _buyTaxFee;
         uint256 _buyLiquidityFee;
+        uint256 _buyBurnFee;
         uint256 _sellTaxFee;
         uint256 _sellLiquidityFee;
+        uint256 _sellBurnFee;
     }
 
-    uint256 public _taxFee = 2;
+    uint256 public _taxFee = 1;
     uint256 private _previousTaxFee = _taxFee;
     
-    uint256 public _liquidityFee = 5;
+    uint256 public _liquidityFee = 3;
     uint256 private _previousLiquidityFee = _liquidityFee;
     
-    uint256 public _buyTaxFee = 2;
-    uint256 public _buyLiquidityFee = 10;
+    uint256 public _burnFee = 1;
+    uint256 private _previousBurnFee = _burnFee;
     
-    uint256 public _sellTaxFee = 5;
-    uint256 public _sellLiquidityFee = 10;
+    uint256 public _buyTaxFee = 1;
+    uint256 public _buyLiquidityFee = 3;
+    uint256 public _buyBurnFee = 1;
+    
+    uint256 public _sellTaxFee = 1;
+    uint256 public _sellLiquidityFee = 3;
+    uint256 public _sellBurnFee = 1;
 
     uint256 public _startTimeForSwap;
     uint256 public _intervalMinutesForSwap = 1 minutes;
@@ -501,9 +509,9 @@ contract CaribMarsX is Context, IERC20, Ownable {
 
         _rOwned[_msgSender()] = _rTotal;
         
-        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);
+        IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x9Ac64Cc6e4415144C455BD8E4837Fea55603e5c3);       //Testnet
         
-        // IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E);
+        // IUniswapV2Router02 _uniswapV2Router = IUniswapV2Router02(0x10ED43C718714eb63d5aA57B78B54704E256024E);    //Mainnet
 
         uniswapV2Pair = IUniswapV2Factory(_uniswapV2Router.factory())
             .createPair(address(this), _uniswapV2Router.WETH());
@@ -516,6 +524,8 @@ contract CaribMarsX is Context, IERC20, Ownable {
         _isExcludedFromFee[address(this)] = true;
 
         _startTimeForSwap = block.timestamp;
+        
+        marketingAddress = payable(owner());
         
         emit Transfer(address(0), _msgSender(), _tTotal);
     }
@@ -590,7 +600,7 @@ contract CaribMarsX is Context, IERC20, Ownable {
     function deliver(uint256 tAmount) public {
         address sender = _msgSender();
         require(!_isExcluded[sender], "Excluded addresses cannot call this function");
-        (uint256 rAmount,,,,,) = _getValues(tAmount);
+        (uint256 rAmount,,,,,,) = _getValues(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rTotal = _rTotal.sub(rAmount);
         _tFeeTotal = _tFeeTotal.add(tAmount);
@@ -600,10 +610,10 @@ contract CaribMarsX is Context, IERC20, Ownable {
     function reflectionFromToken(uint256 tAmount, bool deductTransferFee) public view returns(uint256) {
         require(tAmount <= _tTotal, "Amount must be less than supply");
         if (!deductTransferFee) {
-            (uint256 rAmount,,,,,) = _getValues(tAmount);
+            (uint256 rAmount,,,,,,) = _getValues(tAmount);
             return rAmount;
         } else {
-            (,uint256 rTransferAmount,,,,) = _getValues(tAmount);
+            (,uint256 rTransferAmount,,,,,) = _getValues(tAmount);
             return rTransferAmount;
         }
     }
@@ -667,7 +677,7 @@ contract CaribMarsX is Context, IERC20, Ownable {
 
         // Sell tokens for ETH
         if (!inSwapAndLiquify && swapAndLiquifyEnabled && balanceOf(uniswapV2Pair) > 0) {
-            if (to == uniswapV2Pair) {
+            // if (to == uniswapV2Pair) {
                 if (overMinimumTokenBalance && _startTimeForSwap + _intervalMinutesForSwap <= block.timestamp) {
                     _startTimeForSwap = block.timestamp;
                     contractTokenBalance = minimumTokensBeforeSwap;
@@ -685,7 +695,7 @@ contract CaribMarsX is Context, IERC20, Ownable {
                         buyBackTokens(_bBSLimit);
                     }
                 }
-            }
+            // }
             
         }
 
@@ -703,12 +713,14 @@ contract CaribMarsX is Context, IERC20, Ownable {
                 removeAllFee();
                 _taxFee = _buyTaxFee;
                 _liquidityFee = _buyLiquidityFee;
+                _burnFee = _buyBurnFee;
             }
             // Sell
             else if (to == uniswapV2Pair) {
                 removeAllFee();
                 _taxFee = _sellTaxFee;
                 _liquidityFee = _sellLiquidityFee;
+                _burnFee = _sellBurnFee;
             }
             
             // If send account has a special fee 
@@ -719,10 +731,12 @@ contract CaribMarsX is Context, IERC20, Ownable {
                 if (to == uniswapV2Pair) {
                     _taxFee = _addressFees[from]._sellTaxFee;
                     _liquidityFee = _addressFees[from]._sellLiquidityFee;
+                    _burnFee = _addressFees[from]._sellBurnFee;
                 }
                 else {
                     _taxFee = _addressFees[from]._taxFee;
                     _liquidityFee = _addressFees[from]._liquidityFee;
+                    _burnFee = _addressFees[from]._burnFee;
                 }
             }
             else {
@@ -734,10 +748,12 @@ contract CaribMarsX is Context, IERC20, Ownable {
                     if (from == uniswapV2Pair) {
                         _taxFee = _addressFees[to]._buyTaxFee;
                         _liquidityFee = _addressFees[to]._buyLiquidityFee;
+                        _burnFee = _addressFees[to]._burnFee;
                     }
                     else {
                         _taxFee = _addressFees[to]._taxFee;
                         _liquidityFee = _addressFees[to]._liquidityFee;
+                        _burnFee = _addressFees[to]._burnFee;
                     }
                 }
             }
@@ -836,42 +852,46 @@ contract CaribMarsX is Context, IERC20, Ownable {
     }
 
     function _transferStandard(address sender, address recipient, uint256 tAmount) private {
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity, uint256 tBurn) = _getValues(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);
         _takeLiquidity(tLiquidity);
         _reflectFee(rFee, tFee);
+        _processBurnFee(tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
     function _transferToExcluded(address sender, address recipient, uint256 tAmount) private {
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity, uint256 tBurn) = _getValues(tAmount);
 	    _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);           
         _takeLiquidity(tLiquidity);
         _reflectFee(rFee, tFee);
+        _processBurnFee(tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
     function _transferFromExcluded(address sender, address recipient, uint256 tAmount) private {
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity, uint256 tBurn) = _getValues(tAmount);
     	_tOwned[sender] = _tOwned[sender].sub(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);   
         _takeLiquidity(tLiquidity);
         _reflectFee(rFee, tFee);
+        _processBurnFee(tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
     function _transferBothExcluded(address sender, address recipient, uint256 tAmount) private {
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee, uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity, uint256 tBurn) = _getValues(tAmount);
     	_tOwned[sender] = _tOwned[sender].sub(tAmount);
         _rOwned[sender] = _rOwned[sender].sub(rAmount);
         _tOwned[recipient] = _tOwned[recipient].add(tTransferAmount);
         _rOwned[recipient] = _rOwned[recipient].add(rTransferAmount);        
         _takeLiquidity(tLiquidity);
         _reflectFee(rFee, tFee);
+        _processBurnFee(tBurn);
         emit Transfer(sender, recipient, tTransferAmount);
     }
 
@@ -880,24 +900,26 @@ contract CaribMarsX is Context, IERC20, Ownable {
         _tFeeTotal = _tFeeTotal.add(tFee);
     }
 
-    function _getValues(uint256 tAmount) private view returns (uint256, uint256, uint256, uint256, uint256, uint256) {
-        (uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity) = _getTValues(tAmount);
-        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = _getRValues(tAmount, tFee, tLiquidity, _getRate());
-        return (rAmount, rTransferAmount, rFee, tTransferAmount, tFee, tLiquidity);
+    function _getValues(uint256 tAmount) private view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256) {
+        (uint256 tTransferAmount, uint256 tFee, uint256 tLiquidity, uint256 tBurn) = _getTValues(tAmount);
+        (uint256 rAmount, uint256 rTransferAmount, uint256 rFee) = _getRValues(tAmount, tFee, tLiquidity, tBurn, _getRate());
+        return (rAmount, rTransferAmount, rFee, tTransferAmount, tFee, tLiquidity, tBurn);
     }
 
-    function _getTValues(uint256 tAmount) private view returns (uint256, uint256, uint256) {
+    function _getTValues(uint256 tAmount) private view returns (uint256, uint256, uint256, uint256) {
         uint256 tFee = calculateTaxFee(tAmount);
         uint256 tLiquidity = calculateLiquidityFee(tAmount);
-        uint256 tTransferAmount = tAmount.sub(tFee).sub(tLiquidity);
-        return (tTransferAmount, tFee, tLiquidity);
+        uint256 tBurn = calculateBurnFee(tAmount);
+        uint256 tTransferAmount = tAmount.sub(tFee).sub(tLiquidity).sub(tBurn);
+        return (tTransferAmount, tFee, tLiquidity, tBurn);
     }
 
-    function _getRValues(uint256 tAmount, uint256 tFee, uint256 tLiquidity, uint256 currentRate) private pure returns (uint256, uint256, uint256) {
+    function _getRValues(uint256 tAmount, uint256 tFee, uint256 tLiquidity, uint256 tBurn, uint256 currentRate) private pure returns (uint256, uint256, uint256) {
         uint256 rAmount = tAmount.mul(currentRate);
         uint256 rFee = tFee.mul(currentRate);
         uint256 rLiquidity = tLiquidity.mul(currentRate);
-        uint256 rTransferAmount = rAmount.sub(rFee).sub(rLiquidity);
+        uint256 rBurn = tBurn.mul(currentRate);
+        uint256 rTransferAmount = rAmount.sub(rFee).sub(rLiquidity).sub(rBurn);
         return (rAmount, rTransferAmount, rFee);
     }
 
@@ -938,19 +960,28 @@ contract CaribMarsX is Context, IERC20, Ownable {
         );
     }
     
+    function calculateBurnFee(uint256 _amount) private view returns (uint256) {
+        return _amount.mul(_burnFee).div(
+            10**2
+        );
+    }
+    
     function removeAllFee() private {
         if (_taxFee == 0 && _liquidityFee == 0) return;
         
         _previousTaxFee = _taxFee;
         _previousLiquidityFee = _liquidityFee;
+        _previousBurnFee = _burnFee;
         
         _taxFee = 0;
         _liquidityFee = 0;
+        _burnFee = 0;
     }
     
     function restoreAllFee() private {
         _taxFee = _previousTaxFee;
         _liquidityFee = _previousLiquidityFee;
+        _burnFee = _previousBurnFee;
     }
 
     function isExcludedFromFee(address account) public view returns(bool) {
@@ -999,19 +1030,26 @@ contract CaribMarsX is Context, IERC20, Ownable {
         _previousTaxFee = taxFee;
     }
         
-    function setBuyFee(uint256 buyTaxFee, uint256 buyLiquidityFee) external onlyOwner {
+    function setBuyFee(uint256 buyTaxFee, uint256 buyLiquidityFee, uint256 buyBurnFee) external onlyOwner {
         _buyTaxFee = buyTaxFee;
         _buyLiquidityFee = buyLiquidityFee;
+        _buyBurnFee = buyBurnFee;
     }
    
-    function setSellFee(uint256 sellTaxFee, uint256 sellLiquidityFee) external onlyOwner {
+    function setSellFee(uint256 sellTaxFee, uint256 sellLiquidityFee, uint256 sellBurnFee) external onlyOwner {
         _sellTaxFee = sellTaxFee;
         _sellLiquidityFee = sellLiquidityFee;
+        _sellBurnFee = sellBurnFee;
     }
     
     function setLiquidityFeePercent(uint256 liquidityFee) external onlyOwner {
         _liquidityFee = liquidityFee;
         _previousLiquidityFee = liquidityFee;
+    }
+    
+    function setBurnFeePercent(uint256 burnFee) external onlyOwner() {
+        _burnFee = burnFee;
+        _previousTaxFee = burnFee;
     }
 
     function setBuyBackSellLimit(uint256 buyBackSellSetLimit) external onlyOwner {
@@ -1053,6 +1091,8 @@ contract CaribMarsX is Context, IERC20, Ownable {
         _previousTaxFee = 0;
         _liquidityFee = 0;
         _previousLiquidityFee = 0;
+        _burnFee = 0;
+        _previousBurnFee = 0;
 
         _maxTxAmount = 1 * 10**12 * 10**9;
     }
@@ -1060,10 +1100,12 @@ contract CaribMarsX is Context, IERC20, Ownable {
     function afterPreSale() external onlyOwner {
         setSwapAndLiquifyEnabled(true);
 
-        _taxFee = 2;
-        _previousTaxFee = 2;
-        _liquidityFee = 6;
-        _previousLiquidityFee = 6;
+        _taxFee = 1;
+        _previousTaxFee = 1;
+        _liquidityFee = 3;
+        _previousLiquidityFee = 3;
+        _burnFee = 1;
+        _previousBurnFee = 1;
 
         _maxTxAmount = 3000 * 10**6 * 10**9;
     }
@@ -1133,5 +1175,14 @@ contract CaribMarsX is Context, IERC20, Ownable {
         _addressFees[_address].enable = _enable;
         _addressFees[_address]._sellTaxFee = _addressTaxFee;
         _addressFees[_address]._sellLiquidityFee = _addressLiquidityFee;
+    }
+    
+    function _processBurnFee(uint256 tBurnFee) private {
+        address zeroAddress = address(0x0);
+        uint256 currentRate =  _getRate();
+        uint256 rBurnFee = tBurnFee.mul(currentRate);
+        _rOwned[zeroAddress] = _rOwned[zeroAddress].add(rBurnFee);
+        if(_isExcluded[zeroAddress])
+            _tOwned[zeroAddress] = _tOwned[zeroAddress].add(tBurnFee);
     }
 }
